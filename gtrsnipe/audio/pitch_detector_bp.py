@@ -28,11 +28,34 @@ def transcribe_to_midi_with_bp(audio_file: str,
     Args:
         audio_file: Path to the input audio file.
         overwrite: If True, will overwrite existing MIDI files.
-        min_freq: The minimum frequency (in Hz) to detect.
-        max_freq: The maximum frequency (in Hz) to detect.
+        min_freq: The minimum frequency (in Hz) to detect. Notes whose
+            fundamental is below this are removed from the model's activation
+            matrices before decoding, so they can never be emitted. Use it to
+            bound the output to an instrument's range (a standard-tuned guitar
+            cannot sound below MIDI 40 = 82.41 Hz).
+        max_freq: The maximum frequency (in Hz) to detect — same mechanism.
+        melodia_trick: Basic-Pitch's residual-energy pass. After the
+            onset-driven notes are decoded it keeps scavenging the remaining
+            frame energy into extra notes, which on a polyphonic mix yields a
+            lot of low-amplitude harmonics (a note 12/19 semitones above an
+            already-ringing note). Passed through to ``predict`` (see NOTE) and
+            also drives ``multiple_pitch_bends``.
+        onset_threshold / frame_threshold: Basic-Pitch decode thresholds.
+        min_note_len_ms: Minimum note length in **milliseconds**. Notes whose
+            above-threshold span is not longer than this are dropped. This is
+            the main knob against the sub-frame blips a dense mix produces.
 
     Returns:
         The file path to the generated .mid file.
+
+    NOTE (fixed): ``minimum_note_length`` is documented by Basic-Pitch as
+    milliseconds and its default is 127.70 — the value used to be passed as
+    ``min_note_len_ms / 1000``, i.e. 0.1277 *ms*, which converts to 0 frames and
+    silently disabled the minimum-length filter entirely (~45% of the emitted
+    notes on a 15 s solo slice were shorter than 128 ms, ~21% were a single
+    11.6 ms frame). ``melodia_trick`` was likewise never forwarded to
+    ``predict``, so it was pinned to that function's default (True) no matter
+    what the caller asked for.
     """
     logger.info("Transcribing audio to MIDI with Basic-Pitch...")
     logger.info("This may take a moment...")
@@ -48,7 +71,8 @@ def transcribe_to_midi_with_bp(audio_file: str,
             frame_threshold=frame_threshold,
             minimum_frequency=min_freq,
             maximum_frequency=max_freq,
-            minimum_note_length=(min_note_len_ms / 1000),
+            minimum_note_length=min_note_len_ms,
+            melodia_trick=melodia_trick,
             multiple_pitch_bends=melodia_trick
         )
         
